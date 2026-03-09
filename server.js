@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const sgMail = require('@sendgrid/mail');
+const { Resend } = require('resend');
 const { OAuth2Client } = require('google-auth-library');
 require('dotenv').config();
 
@@ -16,10 +16,8 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-// SendGrid setup
-if (process.env.SENDGRID_API_KEY) {
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-}
+// Resend setup
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // Email-based role mapping
 const EMAIL_ROLES = {
@@ -139,9 +137,9 @@ app.post('/api/student/request', authenticate, async (req, res) => {
         console.log('From:', process.env.EMAIL_USER);
         console.log('To:', parentEmail);
         
-        const msg = {
-            to: parentEmail,
+        await resend.emails.send({
             from: process.env.EMAIL_USER,
+            to: parentEmail,
             subject: `Leave Request from ${user.name}`,
             html: `
                 <h2>Student Leave Request</h2>
@@ -156,9 +154,7 @@ app.post('/api/student/request', authenticate, async (req, res) => {
                    Approve/Reject Request
                 </a>
             `
-        };
-        
-        await sgMail.send(msg);
+        });
         console.log('✅ Email sent to parent:', parentEmail);
     } catch (emailError) {
         console.error('❌ Email failed:', emailError.message);
