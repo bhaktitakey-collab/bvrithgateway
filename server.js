@@ -39,10 +39,10 @@ function getRoleFromEmail(email) {
         return 'hod';
     }
     
-    // Check if student (has 'wh' in first 10 characters and ends with bvrithyderabad.edu.in)
+    // Check if student (10 chars before @ and 'wh' at positions 3-4)
     if (lowerEmail.endsWith('bvrithyderabad.edu.in')) {
-        const first10 = lowerEmail.substring(0, 10);
-        if (first10.includes('wh')) {
+        const username = lowerEmail.split('@')[0];
+        if (username.length === 10 && username.substring(2, 4) === 'wh') {
             return 'student';
         }
         // If not student, then teacher
