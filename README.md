@@ -19,7 +19,7 @@ Edit `.env`:
 GOOGLE_CLIENT_ID=254165822234-o2fh6as8an9ebe0qm9aea7r1rrpc1dgd.apps.googleusercontent.com
 EMAIL_USER=bhaktitakey@gmail.com
 EMAIL_PASS=wpazptqrvtxaedet
-PARENT_EMAIL=parent@example.com
+PARENT_EMAIL=bhaktitakey@gmail.com
 ```
 
 Edit `login.html` line 62:
