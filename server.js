@@ -26,7 +26,9 @@ function getRoleFromEmail(email) {
     // Specific email overrides
     const specificRoles = {
         '25wh1a05g5@bvrithyderabad.edu.in': 'teacher',
-        '25wh1a05d1@bvrithyderabad.edu.in': 'hod'
+        '25wh1a05d1@bvrithyderabad.edu.in': 'hod',
+        'bhaktitakey@gmail.com': 'teacher',
+        'watermelon37453@gmail.com': 'hod'
     };
     
     // Check specific emails first
