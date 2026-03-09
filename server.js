@@ -149,7 +149,7 @@ app.post('/api/student/request', authenticate, async (req, res) => {
         console.log('To:', parentEmail);
         
         await resend.emails.send({
-            from: `BVRIT Admin <${process.env.EMAIL_USER}>`,
+            from: `BVRITH <${process.env.EMAIL_USER}>`,
             to: parentEmail,
             subject: `Leave Request from ${user.name}`,
             html: `
