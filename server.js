@@ -3,6 +3,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const { OAuth2Client } = require('google-auth-library');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -18,6 +19,10 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // Resend setup
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+// Load database files
+const studentsDB = JSON.parse(fs.readFileSync('./students.json', 'utf8'));
+const facultySectionsDB = JSON.parse(fs.readFileSync('./faculty-sections.json', 'utf8'));
 
 // Email-based role mapping
 function getRoleFromEmail(email) {
@@ -109,13 +114,22 @@ app.post('/api/auth/google', async (req, res) => {
             
             // Add role-specific fields
             if (role === 'student') {
-                user.roll = `ROLL${user.id}`;
-                user.class = '10A';
-                user.department = 'CS';
+                // Get student data from database
+                const studentData = studentsDB.find(s => s.studentEmail === email);
+                if (studentData) {
+                    user.branchSection = studentData.branchSection;
+                    user.parentEmail = studentData.parentEmail;
+                } else {
+                    user.branchSection = 'UNKNOWN';
+                    user.parentEmail = process.env.PARENT_EMAIL;
+                }
+                user.roll = email.split('@')[0].toUpperCase();
             } else if (role === 'teacher') {
-                user.class = '10A';
+                // Get sections assigned to this teacher
+                const sections = facultySectionsDB.filter(f => f.facultyEmail === email).map(f => f.branchSection);
+                user.sections = sections;
             } else if (role === 'hod') {
-                user.department = 'CS';
+                user.department = 'ALL';
             }
             
             users.push(user);
@@ -138,8 +152,7 @@ app.post('/api/student/request', authenticate, async (req, res) => {
         student_id: user.id,
         student_name: user.name,
         student_roll: user.roll,
-        student_class: user.class,
-        student_department: user.department,
+        student_branch_section: user.branchSection,
         request_type: type,
         reason,
         leave_date: date,
@@ -156,7 +169,7 @@ app.post('/api/student/request', authenticate, async (req, res) => {
     
     // Send email to parent
     try {
-        const parentEmail = process.env.PARENT_EMAIL;
+        const parentEmail = user.parentEmail || process.env.PARENT_EMAIL;
         console.log('Attempting to send email...');
         console.log('From:', process.env.EMAIL_USER);
         console.log('To:', parentEmail);
@@ -205,7 +218,10 @@ app.post('/api/student/cancel/:id', authenticate, (req, res) => {
 // Teacher endpoints
 app.get('/api/teacher/requests/pending', authenticate, (req, res) => {
     const user = users.find(u => u.id === req.user.id);
-    const pending = requests.filter(r => r.status === 'PENDING_TEACHER' && r.student_class === user.class);
+    const pending = requests.filter(r => 
+        r.status === 'PENDING_TEACHER' && 
+        user.sections && user.sections.includes(r.student_branch_section)
+    );
     res.json(pending);
 });
 
@@ -231,8 +247,8 @@ app.post('/api/teacher/reject/:id', authenticate, (req, res) => {
 
 // HOD endpoints
 app.get('/api/hod/requests/pending', authenticate, (req, res) => {
-    const user = users.find(u => u.id === req.user.id);
-    const pending = requests.filter(r => r.status === 'PENDING_HOD' && r.student_department === user.department);
+    // HOD sees all pending requests
+    const pending = requests.filter(r => r.status === 'PENDING_HOD');
     res.json(pending);
 });
 

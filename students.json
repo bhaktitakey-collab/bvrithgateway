@@ -1,0 +1,32 @@
+[
+  {
+    "studentEmail": "25wh1a05l9@bvrithyderabad.edu.in",
+    "parentEmail": "jahnaavi.b@gmail.com",
+    "branchSection": "CSE-D"
+  },
+  {
+    "studentEmail": "25wh1a05d1@bvrithyderabad.edu.in",
+    "parentEmail": "kruthikab21@gmail.com",
+    "branchSection": "CSE-C"
+  },
+  {
+    "studentEmail": "25wh1a05g5@bvrithyderabad.edu.in",
+    "parentEmail": "krithi9koduri@gmail.com",
+    "branchSection": "CSE-C"
+  },
+  {
+    "studentEmail": "25wh1a12k1@bvrithyderabad.edu.in",
+    "parentEmail": "jahnaavi.b@gmail.com",
+    "branchSection": "CSE-C"
+  },
+  {
+    "studentEmail": "25wh1a12p8@bvrithyderabad.edu.in",
+    "parentEmail": "parent5@gmail.com",
+    "branchSection": "ECE-B"
+  },
+  {
+    "studentEmail": "25wh1a66q2@bvrithyderabad.edu.in",
+    "parentEmail": "parent6@gmail.com",
+    "branchSection": "MECH-A"
+  }
+]
