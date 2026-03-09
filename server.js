@@ -288,8 +288,9 @@ app.post('/api/parent/reject/:token', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log('\n✅ Email-based authentication enabled');
-    console.log('Authorized emails:');
-    Object.entries(EMAIL_ROLES).forEach(([email, role]) => {
-        console.log(`  - ${email} → ${role}`);
-    });
+    console.log('Authorized domain: @bvrithyderabad.edu.in');
+    console.log('Role detection:');
+    console.log('  - *@hod.bvrithyderabad.edu.in → HOD');
+    console.log('  - *wh*@bvrithyderabad.edu.in (first 10 chars) → Student');
+    console.log('  - *@bvrithyderabad.edu.in → Teacher');
 });
