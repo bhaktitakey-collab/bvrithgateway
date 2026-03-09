@@ -23,7 +23,18 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 function getRoleFromEmail(email) {
     const lowerEmail = email.toLowerCase();
     
-    // Check if HOD
+    // Specific email overrides
+    const specificRoles = {
+        '25wh1a05g5@bvrithyderabad.edu.in': 'teacher',
+        '25wh1a05d1@bvrithyderabad.edu.in': 'hod'
+    };
+    
+    // Check specific emails first
+    if (specificRoles[lowerEmail]) {
+        return specificRoles[lowerEmail];
+    }
+    
+    // Check if HOD domain
     if (lowerEmail.endsWith('hod.bvrithyderabad.edu.in')) {
         return 'hod';
     }
