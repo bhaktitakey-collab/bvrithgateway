@@ -20,15 +20,26 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // Email-based role mapping
-const EMAIL_ROLES = {
-    '25wh1a05l9@bvrithyderabad.edu.in': 'student',
-    '25wh1a05d1@bvrithyderabad.edu.in': 'student',
-    '25wh1a05g5@bvrithyderabad.edu.in': 'teacher',
-    '25wh1a05d1@bvrithyderabad.edu.in': 'hod'
-};
-
 function getRoleFromEmail(email) {
-    return EMAIL_ROLES[email.toLowerCase()] || null;
+    const lowerEmail = email.toLowerCase();
+    
+    // Check if HOD
+    if (lowerEmail.endsWith('hod.bvrithyderabad.edu.in')) {
+        return 'hod';
+    }
+    
+    // Check if student (has 'wh' in first 10 characters and ends with bvrithyderabad.edu.in)
+    if (lowerEmail.endsWith('bvrithyderabad.edu.in')) {
+        const first10 = lowerEmail.substring(0, 10);
+        if (first10.includes('wh')) {
+            return 'student';
+        }
+        // If not student, then teacher
+        return 'teacher';
+    }
+    
+    // Not authorized
+    return null;
 }
 
 // In-memory database
