@@ -16,6 +16,7 @@ const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+console.log('Using Google Client ID:', GOOGLE_CLIENT_ID);
 
 // Resend setup
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
