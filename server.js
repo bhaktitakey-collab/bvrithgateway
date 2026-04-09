@@ -177,7 +177,7 @@ app.post('/api/student/request', authenticate, async (req, res) => {
         console.log('To:', parentEmail);
         
         await resend.emails.send({
-            from: `BVRITH <${process.env.EMAIL_USER}>`,
+            from: `BVRITH <onboarding@resend.dev>`,
             to: parentEmail,
             subject: `Leave Request from ${user.name}`,
             html: `
