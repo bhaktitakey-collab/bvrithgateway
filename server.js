@@ -139,7 +139,8 @@ app.post('/api/auth/google', async (req, res) => {
         res.json({ token: authToken, user });
     } catch (error) {
         console.error('Google token error:', error.message);
-        res.status(401).json({ error: 'Invalid Google token', detail: error.message });
+        console.error('Expected audience:', GOOGLE_CLIENT_ID);
+        res.status(401).json({ error: 'Invalid Google token', detail: error.message, expected: GOOGLE_CLIENT_ID });
     }
 });
 
