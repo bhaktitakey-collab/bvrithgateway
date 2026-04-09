@@ -137,7 +137,8 @@ app.post('/api/auth/google', async (req, res) => {
         const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, SECRET);
         res.json({ token: authToken, user });
     } catch (error) {
-        res.status(401).json({ error: 'Invalid Google token' });
+        console.error('Google token error:', error.message);
+        res.status(401).json({ error: 'Invalid Google token', detail: error.message });
     }
 });
 
