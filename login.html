@@ -70,12 +70,7 @@
 
             <div class="card">
                 <h2>Submit Permission Request</h2>
-                <div class="form-group"><label>Request Type</label>
-                    <select id="requestType">
-                        <option value="casual">Casual</option>
-                        <option value="emergency">Emergency</option>
-                    </select>
-                </div>
+
                 <div class="form-group"><label>Reason (max 500 chars)</label><textarea id="reason" maxlength="500"></textarea></div>
                 <div class="form-group"><label>Leave Date</label><input type="date" id="leaveDate"></div>
                 <div class="form-group"><label>Leave Time</label><input type="time" id="leaveTime"></div>
@@ -183,7 +178,7 @@
         }
 
         async function submitRequest() {
-            const type = document.getElementById('requestType').value;
+            const type = 'general';
             const reason = document.getElementById('reason').value;
             const date = document.getElementById('leaveDate').value;
             const time = document.getElementById('leaveTime').value;
