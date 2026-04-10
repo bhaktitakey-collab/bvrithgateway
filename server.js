@@ -187,7 +187,7 @@ app.post('/api/auth/google', async (req, res) => {
 
 // --- Student: submit request ---
 app.post('/api/student/request', authenticate, async (req, res) => {
-    const { reason, from_date, to_date } = req.body;
+    const { reason, from_date, to_date, time } = req.body;
     if (!reason || !from_date || !to_date) return res.status(400).json({ error: 'Fill all fields' });
 
     const student = loadJSON(STUDENTS_FILE).find(s => s.email === req.user.email);
@@ -216,6 +216,7 @@ app.post('/api/student/request', authenticate, async (req, res) => {
         submitted_at: new Date().toISOString(),
         from_date,
         to_date,
+        time: time || '',
         reason,
         snapshot,
         parent_token: parentToken,
