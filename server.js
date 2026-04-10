@@ -332,7 +332,7 @@ app.get('/api/parent/request/:token', (req, res) => {
     }
 });
 
-app.post('/api/parent/approve/:token', (req, res) => {
+app.post('/api/parent/approve/:token', async (req, res) => {
     try {
         const decoded = jwt.verify(req.params.token, SECRET);
         const request = requests.find(r => r.id === decoded.requestId);
