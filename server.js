@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
+const twilio = require('twilio');
 const { OAuth2Client } = require('google-auth-library');
 const fs = require('fs');
 require('dotenv').config();
@@ -20,6 +21,12 @@ console.log('Using Google Client ID:', GOOGLE_CLIENT_ID);
 
 // Resend setup
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+// Twilio setup
+const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+    ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+    : null;
+const TWILIO_WHATSAPP_FROM = 'whatsapp:+14155238886';
 
 // Load database files
 const studentsDB = JSON.parse(fs.readFileSync('./students.json', 'utf8'));
@@ -118,9 +125,11 @@ app.post('/api/auth/google', async (req, res) => {
                 if (studentData) {
                     user.branchSection = studentData.branchSection;
                     user.parentEmail = studentData.parentEmail;
+                    user.parentPhone = studentData.parentPhone;
                 } else {
                     user.branchSection = 'UNKNOWN';
                     user.parentEmail = process.env.PARENT_EMAIL;
+                    user.parentPhone = null;
                 }
                 user.roll = email.split('@')[0].toUpperCase();
             } else if (role === 'teacher') {
@@ -196,8 +205,21 @@ app.post('/api/student/request', authenticate, async (req, res) => {
         console.log('✅ Email sent to parent:', parentEmail);
     } catch (emailError) {
         console.error('❌ Email failed:', emailError.message);
-        console.error('Full error:', emailError);
-        // Continue anyway - request is saved
+    }
+
+    // Send WhatsApp to parent
+    try {
+        const parentPhone = user.parentPhone;
+        if (twilioClient && parentPhone) {
+            await twilioClient.messages.create({
+                from: TWILIO_WHATSAPP_FROM,
+                to: `whatsapp:${parentPhone}`,
+                body: `Leave Request from ${user.name}\nDate: ${date} Time: ${time}\nReason: ${reason}\n\nApprove/Reject: ${BASE_URL}/login.html?token=${request.parent_token}`
+            });
+            console.log('✅ WhatsApp sent to parent:', parentPhone);
+        }
+    } catch (whatsappError) {
+        console.error('❌ WhatsApp failed:', whatsappError.message);
     }
     
     res.json({ requestId: request.id, message: 'Request submitted' });
