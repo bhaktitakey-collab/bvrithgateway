@@ -259,6 +259,7 @@ app.get('/api/teacher/requests/pending', authenticate, (req, res) => {
 });
 
 app.post('/api/teacher/approve/:id', authenticate, async (req, res) => {
+    const user = users.find(u => u.id === req.user.id) || req.user;
     const request = requests.find(r => r.id === parseInt(req.params.id));
     if (!request) return res.status(404).json({ error: 'Request not found' });
     
@@ -269,6 +270,7 @@ app.post('/api/teacher/approve/:id', authenticate, async (req, res) => {
     // Notify HOD
     try {
         const hodEmail = process.env.HOD_EMAIL || 'watermelon37453@gmail.com';
+        console.log('Sending HOD email to:', hodEmail);
         if (resend) {
             const pendingCount = requests.filter(r => r.status === 'PENDING_HOD').length;
             await resend.emails.send({
@@ -277,6 +279,9 @@ app.post('/api/teacher/approve/:id', authenticate, async (req, res) => {
                 subject: `New Leave Request - ${pendingCount} request(s) pending`,
                 html: `<p>A new leave request from <strong>${request.student_name}</strong> is pending your approval.</p><p>You have <strong>${pendingCount}</strong> request(s) in your queue.</p><p>Login to approve: <a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
             });
+            console.log('✅ HOD email sent to:', hodEmail);
+        } else {
+            console.log('Resend not configured');
         }
     } catch (e) { console.error('HOD email failed:', e.message); }
 
