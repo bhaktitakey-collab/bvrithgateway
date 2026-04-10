@@ -265,6 +265,21 @@ app.post('/api/teacher/approve/:id', authenticate, (req, res) => {
     request.teacher_status = 'approved';
     request.status = 'PENDING_HOD';
     request.teacher_approved_at = new Date().toISOString();
+
+    // Notify HOD
+    try {
+        const hodEmail = process.env.HOD_EMAIL || 'watermelon37453@gmail.com';
+        if (resend) {
+            const pendingCount = requests.filter(r => r.status === 'PENDING_HOD').length;
+            await resend.emails.send({
+                from: 'BVRITH <onboarding@resend.dev>',
+                to: hodEmail,
+                subject: `New Leave Request - ${pendingCount} request(s) pending`,
+                html: `<p>A new leave request from <strong>${request.student_name}</strong> is pending your approval.</p><p>You have <strong>${pendingCount}</strong> request(s) in your queue.</p><p>Login to approve: <a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
+            });
+        }
+    } catch (e) { console.error('HOD email failed:', e.message); }
+
     res.json({ message: 'Request approved' });
 });
 
@@ -326,6 +341,21 @@ app.post('/api/parent/approve/:token', (req, res) => {
         request.parent_status = 'approved';
         request.status = 'PENDING_TEACHER';
         request.parent_approved_at = new Date().toISOString();
+
+        // Notify teacher
+        try {
+            const teacherEntry = facultySectionsDB.find(f => f.branchSection === request.student_branch_section);
+            if (teacherEntry && resend) {
+                const pendingCount = requests.filter(r => r.status === 'PENDING_TEACHER' && r.student_branch_section === request.student_branch_section).length;
+                await resend.emails.send({
+                    from: 'BVRITH <onboarding@resend.dev>',
+                    to: teacherEntry.facultyEmail,
+                    subject: `New Leave Request - ${pendingCount} request(s) pending`,
+                    html: `<p>A new leave request from <strong>${request.student_name}</strong> is pending your approval.</p><p>You have <strong>${pendingCount}</strong> request(s) in your queue.</p><p>Login to approve: <a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
+                });
+            }
+        } catch (e) { console.error('Teacher email failed:', e.message); }
+
         res.json({ message: 'Request approved' });
     } catch (error) {
         res.status(401).json({ error: 'Invalid or expired token' });
