@@ -154,7 +154,11 @@ app.post('/api/auth/google', async (req, res) => {
 
 // Student endpoints
 app.post('/api/student/request', authenticate, async (req, res) => {
-    const user = users.find(u => u.id === req.user.id);
+    let user = users.find(u => u.id === req.user.id);
+    if (!user) {
+        user = req.user;
+        users.push(user);
+    }
     const { type, reason, date, time } = req.body;
     
     const request = {
