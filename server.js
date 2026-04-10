@@ -295,17 +295,18 @@ app.post('/api/parent/approve/:token', async (req, res) => {
 
         // Notify teacher via Resend
         try {
-            if (resend) {
+            if (process.env.BREVO_API_KEY) {
                 const pendingCount = requests.filter(r => r.snapshot.class_teacher === request.snapshot.class_teacher && r.parent_status === 'approved' && r.teacher_status === 'pending').length;
-                await resend.emails.send({
-                    from: 'BVRITH <onboarding@resend.dev>',
-                    to: request.snapshot.class_teacher,
-                    subject: `New Leave Request - ${pendingCount} request(s) pending`,
-                    html: `<p>Leave request from <strong>${request.student_name}</strong> needs your approval.</p><p>You have <strong>${pendingCount}</strong> pending request(s).</p><p><a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
-                });
-                console.log('✅ Teacher email sent:', request.snapshot.class_teacher);
+                await sendBrevoEmail(
+                    request.snapshot.class_teacher,
+                    `New Leave Request - ${pendingCount} request(s) pending`,
+                    `<p>Leave request from <strong>${request.student_name}</strong> needs your approval.</p><p>You have <strong>${pendingCount}</strong> pending request(s).</p><p><a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
+                );
+                console.log('✅ Teacher email sent via Brevo:', request.snapshot.class_teacher);
+            } else {
+                console.warn('⚠️ BREVO_API_KEY is not set. Teacher email not sent.');
             }
-        } catch (e) { console.error('Teacher email failed:', e.message); }
+        } catch (e) { console.error('Teacher email failed (Brevo):', e.message); }
 
         res.json({ message: 'Approved' });
     } catch {
