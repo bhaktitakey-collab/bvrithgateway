@@ -200,72 +200,55 @@
         async function loadStudentRequests() {
             try {
                 const allRequests = await apiCall('/student/requests');
-
-                // Show only requests where leave date hasn't passed 11:59 PM IST
                 const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
                 const filteredReqs = allRequests.filter(r => {
                     const leaveEnd = new Date(`${r.to_date}T23:59:59+05:30`);
                     return leaveEnd >= nowIST;
                 });
-                
+
                 const html = filteredReqs.length ? filteredReqs.map(r => {
-                    const canCancel = ['PENDING_PARENT', 'PENDING_TEACHER', 'PENDING_HOD'].includes(r.status);
-                    const statusClass = r.status === 'CANCELLED_BY_STUDENT' ? 'cancelled' :
-                                       r.status.includes('REJECTED') ? 'rejected' :
-                                       r.status === 'APPROVED' ? 'approved' : 'pending';
-                    
-                    const isRejected = r.status.includes('REJECTED');
-                    const itemClass = isRejected ? 'rejected' : r.request_type;
-                    
+                    const canCancel = r.final_status === 'pending' && r.parent_status === 'pending';
+                    const statusClass = r.final_status === 'cancelled' ? 'cancelled' :
+                                       r.final_status === 'rejected' ? 'rejected' :
+                                       r.final_status === 'approved' ? 'approved' : 'pending';
+                    const itemClass = r.final_status === 'rejected' ? 'rejected' : '';
+
                     let rejectionInfo = '';
-                    if (r.status === 'REJECTED_BY_PARENT' && r.parent_rejection_reason) {
-                        rejectionInfo = `<p style="color:#721c24;"><strong>Rejection Reason:</strong> ${r.parent_rejection_reason}</p>`;
-                    } else if (r.status === 'REJECTED_BY_TEACHER' && r.teacher_rejection_reason) {
-                        rejectionInfo = `<p style="color:#721c24;"><strong>Rejection Reason:</strong> ${r.teacher_rejection_reason}</p>`;
-                    } else if (r.status === 'REJECTED_BY_HOD' && r.hod_rejection_reason) {
-                        rejectionInfo = `<p style="color:#721c24;"><strong>Rejection Reason:</strong> ${r.hod_rejection_reason}</p>`;
-                    }
-                    
+                    if (r.parent_status === 'rejected') rejectionInfo = `<p style="color:#721c24;"><strong>Rejected by:</strong> Parent</p>`;
+                    else if (r.teacher_status === 'rejected') rejectionInfo = `<p style="color:#721c24;"><strong>Rejected by:</strong> Teacher${r.teacher_remarks ? ' — ' + r.teacher_remarks : ''}</p>`;
+                    else if (r.hod_status === 'rejected') rejectionInfo = `<p style="color:#721c24;"><strong>Rejected by:</strong> HOD${r.hod_remarks ? ' — ' + r.hod_remarks : ''}</p>`;
+
                     return `
                     <div class="request-item ${itemClass}">
-                        <h3>Request #${r.id}</h3>
+                        <h3>Request #${r.request_id}</h3>
                         <p><strong>Reason:</strong> ${r.reason}</p>
-                        <p><strong>Leave:</strong> ${r.leave_date} at ${r.leave_time}</p>
-                        <p><strong>Status:</strong> <span class="status status-${statusClass}">${r.status}</span></p>
+                        <p><strong>Date:</strong> ${r.from_date}</p>
+                        <p><strong>Status:</strong> <span class="status status-${statusClass}">${r.final_status.toUpperCase()}</span></p>
                         ${rejectionInfo}
                         <div style="display:flex;margin-top:10px;">
-                            <div class="flow-step ${
-                                r.parent_status === 'approved' ? 'completed' : 
-                                r.parent_status === 'rejected' ? 'rejected' :
-                                r.status === 'PENDING_PARENT' ? 'active' : ''
-                            }">Parent<br>${r.parent_status === 'approved' ? '✅ Approved' : r.parent_status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}</div>
-                            <div class="flow-step ${
-                                r.teacher_status === 'approved' ? 'completed' : 
-                                r.teacher_status === 'rejected' ? 'rejected' :
-                                r.status === 'PENDING_TEACHER' ? 'active' : ''
-                            }">Teacher<br>${r.teacher_status === 'approved' ? '✅ Approved' : r.teacher_status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}</div>
-                            <div class="flow-step ${
-                                r.hod_status === 'approved' ? 'completed' : 
-                                r.hod_status === 'rejected' ? 'rejected' :
-                                r.status === 'PENDING_HOD' ? 'active' : ''
-                            }">HOD<br>${r.hod_status === 'approved' ? '✅ Approved' : r.hod_status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}</div>
+                            <div class="flow-step ${r.parent_status === 'approved' ? 'completed' : r.parent_status === 'rejected' ? 'rejected' : 'active'}">
+                                Parent<br>${r.parent_status === 'approved' ? '✅' : r.parent_status === 'rejected' ? '❌' : '⏳'}
+                            </div>
+                            <div class="flow-step ${r.teacher_status === 'approved' ? 'completed' : r.teacher_status === 'rejected' ? 'rejected' : r.parent_status === 'approved' ? 'active' : ''}">
+                                Teacher<br>${r.teacher_status === 'approved' ? '✅' : r.teacher_status === 'rejected' ? '❌' : '⏳'}
+                            </div>
+                            <div class="flow-step ${r.hod_status === 'approved' ? 'completed' : r.hod_status === 'rejected' ? 'rejected' : r.teacher_status === 'approved' ? 'active' : ''}">
+                                HOD<br>${r.hod_status === 'approved' ? '✅' : r.hod_status === 'rejected' ? '❌' : '⏳'}
+                            </div>
                         </div>
-                        ${canCancel ? `<button class="btn btn-danger" style="margin-top:10px;" onclick="cancelRequest(${r.id})">Cancel Request</button>` : ''}
-                    </div>
-                `}).join('') : '<p>No requests in this category</p>';
+                        ${canCancel ? `<button class="btn btn-danger" style="margin-top:10px;" onclick="cancelRequest('${r.request_id}')">Cancel Request</button>` : ''}
+                    </div>`;
+                }).join('') : '<p>No active requests</p>';
                 document.getElementById('myRequests').innerHTML = html;
             } catch (error) {
                 alert(error.message);
             }
         }
 
-
-
         async function cancelRequest(id) {
             if (!confirm('Are you sure you want to cancel this request?')) return;
             try {
                 await apiCall(`/student/cancel/${id}`, 'POST');
-                alert('Request cancelled successfully.');
                 loadStudentRequests();
             } catch (error) {
                 alert(error.message);
@@ -276,18 +259,18 @@
             try {
                 const pending = await apiCall('/teacher/requests/pending');
                 const html = pending.length ? pending.map(r => `
-                    <div class="request-item ${r.request_type}">
-                        <h3>${r.student_name} (${r.student_roll}) - <span style="color: ${r.request_type === 'emergency' ? '#e74c3c' : '#3498db'}">${r.request_type.toUpperCase()}</span></h3>
-                        <p><strong>Class:</strong> ${r.student_class}</p>
+                    <div class="request-item">
+                        <h3>${r.student_name} (${r.student_rollno})</h3>
+                        <p><strong>Section:</strong> ${r.student_section}</p>
                         <p><strong>Reason:</strong> ${r.reason}</p>
-                        <p><strong>Leave:</strong> ${r.leave_date} at ${r.leave_time}</p>
-                        <p><strong>Parent:</strong> ✅ Approved at ${r.parent_approved_at || 'N/A'}</p>
+                        <p><strong>Date:</strong> ${r.from_date}</p>
+                        <p><strong>Parent:</strong> ✅ Approved at ${r.parent_responded_at || 'N/A'}</p>
                         <div class="actions">
-                            <button class="btn btn-success" onclick="approveRequest(${r.id}, 'teacher', 'approved')">Approve</button>
-                            <button class="btn btn-danger" onclick="approveRequest(${r.id}, 'teacher', 'rejected')">Reject</button>
+                            <button class="btn btn-success" onclick="approveRequest('${r.request_id}', 'teacher', 'approved')">Approve</button>
+                            <button class="btn btn-danger" onclick="approveRequest('${r.request_id}', 'teacher', 'rejected')">Reject</button>
                         </div>
                     </div>
-                `).join('') : '<p>No pending requests for your class</p>';
+                `).join('') : '<p>No pending requests</p>';
                 document.getElementById('teacherRequests').innerHTML = html;
             } catch (error) {
                 alert(error.message);
@@ -298,18 +281,18 @@
             try {
                 const pending = await apiCall('/hod/requests/pending');
                 const html = pending.length ? pending.map(r => `
-                    <div class="request-item ${r.request_type}">
-                        <h3>${r.student_name} (${r.student_roll}) - <span style="color: ${r.request_type === 'emergency' ? '#e74c3c' : '#3498db'}">${r.request_type.toUpperCase()}</span></h3>
-                        <p><strong>Class:</strong> ${r.student_class} | <strong>Department:</strong> ${r.student_department}</p>
+                    <div class="request-item">
+                        <h3>${r.student_name} (${r.student_rollno})</h3>
+                        <p><strong>Section:</strong> ${r.student_section}</p>
                         <p><strong>Reason:</strong> ${r.reason}</p>
-                        <p><strong>Leave:</strong> ${r.leave_date} at ${r.leave_time}</p>
-                        <p>✅ Parent Approved: ${r.parent_approved_at || 'N/A'} | ✅ Teacher Approved: ${r.teacher_approved_at || 'N/A'}</p>
+                        <p><strong>Date:</strong> ${r.from_date}</p>
+                        <p>✅ Parent: ${r.parent_responded_at || 'N/A'} | ✅ Teacher: ${r.teacher_actioned_at || 'N/A'}</p>
                         <div class="actions">
-                            <button class="btn btn-success" onclick="approveRequest(${r.id}, 'hod', 'approved')">Approve</button>
-                            <button class="btn btn-danger" onclick="approveRequest(${r.id}, 'hod', 'rejected')">Reject</button>
+                            <button class="btn btn-success" onclick="approveRequest('${r.request_id}', 'hod', 'approved')">Approve</button>
+                            <button class="btn btn-danger" onclick="approveRequest('${r.request_id}', 'hod', 'rejected')">Reject</button>
                         </div>
                     </div>
-                `).join('') : '<p>No pending requests for your department</p>';
+                `).join('') : '<p>No pending requests</p>';
                 document.getElementById('hodRequests').innerHTML = html;
             } catch (error) {
                 alert(error.message);
@@ -322,13 +305,12 @@
                 reason = prompt('Please provide reason for rejection:');
                 if (!reason) return alert('Rejection reason is required');
             }
-            
             try {
                 const endpoint = action === 'approved' ? 'approve' : 'reject';
                 await apiCall(`/${role}/${endpoint}/${id}`, 'POST', { reason });
                 alert(`Request ${action}!`);
                 if (role === 'teacher') loadTeacherRequests();
-                else if (role === 'hod') loadHODRequests();
+                else loadHODRequests();
             } catch (error) {
                 alert(error.message);
             }
