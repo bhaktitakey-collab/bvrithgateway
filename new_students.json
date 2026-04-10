@@ -7,5 +7,23 @@
     "department": "CSE",
     "section": "CSE-C",
     "batch": "2025-29"
+  },
+  {
+    "name": "Bhakti Takey",
+    "email": "25wh1a05l9@bvrithyderabad.edu.in",
+    "parent_phone": "918712209017",
+    "rollno": "25WH1A05L9",
+    "department": "CSE",
+    "section": "CSE-D",
+    "batch": "2025-29"
+  },
+  {
+    "name": "Kruthika",
+    "email": "25wh1a05g5@bvrithyderabad.edu.in",
+    "parent_phone": "918106960690",
+    "rollno": "25WH1A05G5",
+    "department": "CSE",
+    "section": "CSE-C",
+    "batch": "2025-29"
   }
 ]
