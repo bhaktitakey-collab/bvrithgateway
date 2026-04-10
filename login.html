@@ -178,6 +178,9 @@
         }
 
         async function submitRequest() {
+            const btn = event.target;
+            if (btn.disabled) return;
+            btn.disabled = true;
             const type = 'general';
             const reason = document.getElementById('reason').value;
             const date = document.getElementById('leaveDate').value;
@@ -194,8 +197,10 @@
                 document.getElementById('leaveDate').value = '';
                 document.getElementById('leaveTime').value = '';
                 await loadStudentRequests();
-                alert('Request submitted successfully!\n\nAn email has been sent to your parent for approval.');
+                alert('Request submitted successfully!\n\nA WhatsApp message has been sent to your parent for approval.');
+                btn.disabled = false;
             } catch (error) {
+                btn.disabled = false;
                 alert(error.message);
             }
         }
