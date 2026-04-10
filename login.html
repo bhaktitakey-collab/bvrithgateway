@@ -79,13 +79,6 @@
 
             <div class="card">
                 <h2>My Requests</h2>
-                <div class="tabs">
-                    <button class="tab active" onclick="switchStudentTab('pending')">Pending</button>
-                    <button class="tab" onclick="switchStudentTab('approved')">Approved</button>
-                    <button class="tab" onclick="switchStudentTab('denied')">Denied</button>
-                    <button class="tab" onclick="switchStudentTab('cancelled')">Cancelled</button>
-                    <button class="tab" onclick="switchStudentTab('all')">All Requests</button>
-                </div>
                 <div id="myRequests"></div>
             </div>
         </div>
@@ -208,17 +201,13 @@
         async function loadStudentRequests() {
             try {
                 const allRequests = await apiCall('/student/requests');
-                let filteredReqs = allRequests;
-                
-                if (currentStudentTab === 'pending') {
-                    filteredReqs = allRequests.filter(r => ['PENDING_PARENT', 'PENDING_TEACHER', 'PENDING_HOD'].includes(r.status));
-                } else if (currentStudentTab === 'approved') {
-                    filteredReqs = allRequests.filter(r => r.status === 'APPROVED');
-                } else if (currentStudentTab === 'denied') {
-                    filteredReqs = allRequests.filter(r => ['REJECTED_BY_PARENT', 'REJECTED_BY_TEACHER', 'REJECTED_BY_HOD'].includes(r.status));
-                } else if (currentStudentTab === 'cancelled') {
-                    filteredReqs = allRequests.filter(r => r.status === 'CANCELLED_BY_STUDENT');
-                }
+
+                // Show only requests where leave date hasn't passed 11:59 PM IST
+                const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+                const filteredReqs = allRequests.filter(r => {
+                    const leaveEnd = new Date(`${r.leave_date}T23:59:59+05:30`);
+                    return leaveEnd >= nowIST;
+                });
                 
                 const html = filteredReqs.length ? filteredReqs.map(r => {
                     const canCancel = ['PENDING_PARENT', 'PENDING_TEACHER', 'PENDING_HOD'].includes(r.status);
@@ -240,7 +229,7 @@
                     
                     return `
                     <div class="request-item ${itemClass}">
-                        <h3>Request #${r.id} - <span style="color: ${r.request_type === 'emergency' ? '#e74c3c' : '#3498db'}">${r.request_type.toUpperCase()}</span></h3>
+                        <h3>Request #${r.id}</h3>
                         <p><strong>Reason:</strong> ${r.reason}</p>
                         <p><strong>Leave:</strong> ${r.leave_date} at ${r.leave_time}</p>
                         <p><strong>Status:</strong> <span class="status status-${statusClass}">${r.status}</span></p>
@@ -271,12 +260,7 @@
             }
         }
 
-        function switchStudentTab(tab) {
-            currentStudentTab = tab;
-            document.querySelectorAll('#studentDashboard .tabs .tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            loadStudentRequests();
-        }
+
 
         async function cancelRequest(id) {
             if (!confirm('Are you sure you want to cancel this request?')) return;

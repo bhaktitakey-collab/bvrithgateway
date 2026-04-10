@@ -160,6 +160,12 @@ app.post('/api/student/request', authenticate, async (req, res) => {
         users.push(user);
     }
     const { type, reason, date, time } = req.body;
+
+    // One request per day per student
+    const existingRequest = requests.find(r => r.student_id === user.id && r.leave_date === date && r.status !== 'CANCELLED_BY_STUDENT');
+    if (existingRequest) {
+        return res.status(400).json({ error: 'You have already submitted a request for this date.' });
+    }
     
     const request = {
         id: requestIdCounter++,
