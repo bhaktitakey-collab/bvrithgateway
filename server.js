@@ -258,7 +258,7 @@ app.get('/api/teacher/requests/pending', authenticate, (req, res) => {
     res.json(pending);
 });
 
-app.post('/api/teacher/approve/:id', authenticate, (req, res) => {
+app.post('/api/teacher/approve/:id', authenticate, async (req, res) => {
     const request = requests.find(r => r.id === parseInt(req.params.id));
     if (!request) return res.status(404).json({ error: 'Request not found' });
     
