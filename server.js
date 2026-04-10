@@ -3,7 +3,6 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
 const twilio = require('twilio');
-const SibApiV3Sdk = require('@getbrevo/brevo');
 const { OAuth2Client } = require('google-auth-library');
 const fs = require('fs');
 require('dotenv').config();
@@ -29,9 +28,20 @@ const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_T
     : null;
 const TWILIO_WHATSAPP_FROM = 'whatsapp:+14155238886';
 
-// Brevo setup for HOD emails
-const brevoClient = new SibApiV3Sdk.TransactionalEmailsApi();
-brevoClient.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
+// Brevo HOD email helper
+async function sendBrevoEmail(to, subject, html) {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sender: { name: 'BVRITH', email: 'bhaktitakey@gmail.com' },
+            to: [{ email: to }],
+            subject,
+            htmlContent: html
+        })
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
 
 // Load database files
 const studentsDB = JSON.parse(fs.readFileSync('./students.json', 'utf8'));
@@ -278,12 +288,9 @@ app.post('/api/teacher/approve/:id', authenticate, async (req, res) => {
         console.log('Sending HOD email to:', hodEmail);
         if (process.env.BREVO_API_KEY) {
             const pendingCount = requests.filter(r => r.status === 'PENDING_HOD').length;
-            await brevoClient.sendTransacEmail({
-                sender: { name: 'BVRITH', email: 'bhaktitakey@gmail.com' },
-                to: [{ email: hodEmail }],
-                subject: `New Leave Request - ${pendingCount} request(s) pending`,
-                htmlContent: `<p>A new leave request from <strong>${request.student_name}</strong> is pending your approval.</p><p>You have <strong>${pendingCount}</strong> request(s) in your queue.</p><p>Login to approve: <a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
-            });
+            await sendBrevoEmail(hodEmail, `New Leave Request - ${pendingCount} request(s) pending`,
+                `<p>A new leave request from <strong>${request.student_name}</strong> is pending your approval.</p><p>You have <strong>${pendingCount}</strong> request(s) in your queue.</p><p>Login to approve: <a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
+            );
             console.log('✅ HOD email sent to:', hodEmail);
         } else {
             console.log('Brevo not configured');
