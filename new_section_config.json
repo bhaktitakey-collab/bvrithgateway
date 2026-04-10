@@ -1,0 +1,36 @@
+{
+  "first_year": {
+    "hod": "firstyear.hod@bvrithyderabad.edu.in",
+    "batches": {
+      "2025-29": {
+        "CSE-A": { "class_teacher": "teacher1@bvrithyderabad.edu.in" },
+        "CSE-B": { "class_teacher": "teacher2@bvrithyderabad.edu.in" },
+        "CSE-C": { "class_teacher": "bhaktitakey@gmail.com" },
+        "CSE-D": { "class_teacher": "bhaktitakey@gmail.com" },
+        "ECE-A": { "class_teacher": "teacher3@bvrithyderabad.edu.in" }
+      }
+    }
+  },
+  "departments": {
+    "CSE": {
+      "hod": "watermelon37453@gmail.com",
+      "batches": {
+        "2022-26": {
+          "A": { "class_teacher": "teacher1@bvrithyderabad.edu.in" },
+          "B": { "class_teacher": "teacher2@bvrithyderabad.edu.in" }
+        },
+        "2023-27": {
+          "A": { "class_teacher": "teacher1@bvrithyderabad.edu.in" }
+        }
+      }
+    },
+    "ECE": {
+      "hod": "ece.hod@bvrithyderabad.edu.in",
+      "batches": {
+        "2022-26": {
+          "A": { "class_teacher": "teacher3@bvrithyderabad.edu.in" }
+        }
+      }
+    }
+  }
+}

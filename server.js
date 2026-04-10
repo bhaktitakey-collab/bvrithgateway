@@ -12,29 +12,29 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-const SECRET = 'your-secret-key-change-in-production';
+const SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 console.log('Using Google Client ID:', GOOGLE_CLIENT_ID);
 
-// Resend setup
+// Resend setup (parent emails)
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-// Twilio setup
+// Twilio setup (parent WhatsApp)
 const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
     ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
     : null;
 const TWILIO_WHATSAPP_FROM = 'whatsapp:+14155238886';
 
-// Brevo HOD email helper
+// Brevo (teacher/HOD emails)
 async function sendBrevoEmail(to, subject, html) {
     const res = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            sender: { name: 'BVRITH', email: 'bhaktitakey@gmail.com' },
+            sender: { name: 'BVRITH', email: process.env.EMAIL_USER },
             to: [{ email: to }],
             subject,
             htmlContent: html
@@ -43,363 +43,382 @@ async function sendBrevoEmail(to, subject, html) {
     if (!res.ok) throw new Error(await res.text());
 }
 
-// Load database files
-const studentsDB = JSON.parse(fs.readFileSync('./students.json', 'utf8'));
-const facultySectionsDB = JSON.parse(fs.readFileSync('./faculty-sections.json', 'utf8'));
+// --- DB helpers ---
+function loadJSON(file) {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+function saveJSON(file, data) {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
 
-// Email-based role mapping
-function getRoleFromEmail(email) {
-    const lowerEmail = email.toLowerCase();
-    
-    // Specific email overrides
-    const specificRoles = {
-        'bhaktitakey@gmail.com': 'teacher',
-        'watermelon37453@gmail.com': 'hod'
-    };
-    
-    // Check specific emails first
-    if (specificRoles[lowerEmail]) {
-        return specificRoles[lowerEmail];
-    }
-    
-    // Check if HOD domain
-    if (lowerEmail.endsWith('hod.bvrithyderabad.edu.in')) {
-        return 'hod';
-    }
-    
-    // Check if student (10 chars before @ and 'wh' at positions 3-4)
-    if (lowerEmail.endsWith('bvrithyderabad.edu.in')) {
-        const username = lowerEmail.split('@')[0];
-        if (username.length === 10 && username.substring(2, 4) === 'wh') {
-            return 'student';
-        }
-        // If not student, then teacher
-        return 'teacher';
-    }
-    
-    // Not authorized
+const STUDENTS_FILE = './new_students.json';
+const SECTION_CONFIG_FILE = './new_section_config.json';
+const REQUESTS_FILE = './new_leave_requests.json';
+const WHATSAPP_LOG_FILE = './new_whatsapp_log.json';
+
+// --- Role detection from section_config.json ---
+function getRole(email) {
+    const config = loadJSON(SECTION_CONFIG_FILE);
+
+    const firstYearHod = config.first_year.hod;
+    const deptHods = Object.values(config.departments).map(d => d.hod);
+    const allHods = [firstYearHod, ...deptHods];
+
+    const firstYearTeachers = Object.values(config.first_year.batches)
+        .flatMap(batch => Object.values(batch).map(s => s.class_teacher));
+    const deptTeachers = Object.values(config.departments)
+        .flatMap(d => Object.values(d.batches)
+            .flatMap(batch => Object.values(batch).map(s => s.class_teacher)));
+    const allTeachers = [...new Set([...firstYearTeachers, ...deptTeachers])];
+
+    if (allHods.includes(email)) return 'hod';
+    if (allTeachers.includes(email)) return 'teacher';
+
+    const students = loadJSON(STUDENTS_FILE);
+    if (students.find(s => s.email === email)) return 'student';
+
     return null;
 }
 
-// In-memory database
-const users = [];
-let requests = [];
-let requestIdCounter = 1;
+// --- Student config lookup ---
+function getStudentConfig(student) {
+    const config = loadJSON(SECTION_CONFIG_FILE);
+    const admissionYear = parseInt(student.batch.split('-')[0]);
+    const yearOfStudy = new Date().getFullYear() - admissionYear + 1;
 
-// Auth middleware
+    if (yearOfStudy === 1) {
+        const section = config.first_year.batches[student.batch][student.section];
+        return { hod: config.first_year.hod, class_teacher: section.class_teacher };
+    } else {
+        const dept = config.departments[student.department];
+        return { hod: dept.hod, class_teacher: dept.batches[student.batch][student.section].class_teacher };
+    }
+}
+
+// --- Request ID generator ---
+function generateRequestId() {
+    const requests = loadJSON(REQUESTS_FILE);
+    return `REQ${String(requests.length + 1).padStart(3, '0')}`;
+}
+
+// --- WhatsApp log ---
+function logWhatsApp(requestId, phone, messageType, status) {
+    const logs = loadJSON(WHATSAPP_LOG_FILE);
+    logs.push({
+        log_id: `LOG${String(logs.length + 1).padStart(3, '0')}`,
+        request_id: requestId,
+        phone,
+        message_type: messageType,
+        sent_at: new Date().toISOString(),
+        delivery_status: status
+    });
+    saveJSON(WHATSAPP_LOG_FILE, logs);
+}
+
+// --- Auth middleware ---
 const authenticate = (req, res, next) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'No token provided' });
-    
     try {
         req.user = jwt.verify(token, SECRET);
         next();
-    } catch (error) {
+    } catch {
         res.status(401).json({ error: 'Invalid token' });
     }
 };
 
-// Google OAuth login
+// --- Google OAuth login ---
 app.post('/api/auth/google', async (req, res) => {
     try {
         const { token } = req.body;
-        
-        const ticket = await googleClient.verifyIdToken({
-            idToken: token,
-            audience: GOOGLE_CLIENT_ID
-        });
-        
-        const payload = ticket.getPayload();
-        const email = payload.email;
-        const name = payload.name;
-        
-        // Determine role from email domain
-        const role = getRoleFromEmail(email);
-        
-        if (!role) {
-            return res.status(403).json({ 
-                error: 'Email domain not authorized. Please use university email.' 
+        const ticket = await googleClient.verifyIdToken({ idToken: token, audience: GOOGLE_CLIENT_ID });
+        const { email, name } = ticket.getPayload();
+
+        const role = getRole(email);
+        if (!role) return res.status(403).json({ error: 'Email not authorized.' });
+
+        let userData = { email, name, role };
+
+        if (role === 'student') {
+            const student = loadJSON(STUDENTS_FILE).find(s => s.email === email);
+            userData = { ...userData, ...student };
+            const snapshot = getStudentConfig(student);
+            userData.class_teacher = snapshot.class_teacher;
+            userData.hod = snapshot.hod;
+        } else if (role === 'teacher') {
+            const config = loadJSON(SECTION_CONFIG_FILE);
+            // Find all sections this teacher is assigned to
+            const sections = [];
+            Object.entries(config.first_year.batches).forEach(([batch, secs]) => {
+                Object.entries(secs).forEach(([sec, val]) => {
+                    if (val.class_teacher === email) sections.push({ batch, section: sec, type: 'first_year' });
+                });
             });
+            Object.entries(config.departments).forEach(([dept, deptVal]) => {
+                Object.entries(deptVal.batches).forEach(([batch, secs]) => {
+                    Object.entries(secs).forEach(([sec, val]) => {
+                        if (val.class_teacher === email) sections.push({ batch, section: sec, dept, type: 'dept' });
+                    });
+                });
+            });
+            userData.sections = sections;
+        } else if (role === 'hod') {
+            const config = loadJSON(SECTION_CONFIG_FILE);
+            // Find which dept/first_year this HOD manages
+            const depts = [];
+            if (config.first_year.hod === email) depts.push('first_year');
+            Object.entries(config.departments).forEach(([dept, val]) => {
+                if (val.hod === email) depts.push(dept);
+            });
+            userData.manages = depts;
         }
-        
-        // Find or create user
-        let user = users.find(u => u.email === email);
-        
-        if (!user) {
-            user = {
-                id: users.length + 1,
-                email,
-                name,
-                role
-            };
-            
-            // Add role-specific fields
-            if (role === 'student') {
-                // Get student data from database
-                const studentData = studentsDB.find(s => s.studentEmail === email);
-                if (studentData) {
-                    user.branchSection = studentData.branchSection;
-                    user.parentEmail = studentData.parentEmail;
-                    user.parentPhone = studentData.parentPhone;
-                } else {
-                    user.branchSection = 'UNKNOWN';
-                    user.parentEmail = process.env.PARENT_EMAIL;
-                    user.parentPhone = null;
-                }
-                user.roll = email.split('@')[0].toUpperCase();
-            } else if (role === 'teacher') {
-                // Get sections assigned to this teacher
-                const sections = facultySectionsDB.filter(f => f.facultyEmail === email).map(f => f.branchSection);
-                user.sections = sections;
-            } else if (role === 'hod') {
-                user.department = 'ALL';
-            }
-            
-            users.push(user);
-        }
-        
-        const authToken = jwt.sign({ id: user.id, email: user.email, role: user.role }, SECRET);
-        res.json({ token: authToken, user });
+
+        const authToken = jwt.sign(userData, SECRET, { expiresIn: '8h' });
+        res.json({ token: authToken, user: userData });
     } catch (error) {
         console.error('Google token error:', error.message);
-        console.error('Expected audience:', GOOGLE_CLIENT_ID);
-        res.status(401).json({ error: 'Invalid Google token', detail: error.message, expected: GOOGLE_CLIENT_ID });
+        res.status(401).json({ error: 'Invalid Google token', detail: error.message });
     }
 });
 
-// Student endpoints
+// --- Student: submit request ---
 app.post('/api/student/request', authenticate, async (req, res) => {
-    let user = users.find(u => u.id === req.user.id);
-    if (!user) {
-        user = req.user;
-        users.push(user);
-    }
-    const { type, reason, date, time } = req.body;
+    const { reason, from_date, to_date } = req.body;
+    if (!reason || !from_date || !to_date) return res.status(400).json({ error: 'Fill all fields' });
 
-    // One request per day per student
-    const existingRequest = requests.find(r => r.student_id === user.id && r.leave_date === date && r.status !== 'CANCELLED_BY_STUDENT');
-    if (existingRequest) {
-        return res.status(400).json({ error: 'You have already submitted a request for this date.' });
-    }
-    
+    const student = loadJSON(STUDENTS_FILE).find(s => s.email === req.user.email);
+    if (!student) return res.status(403).json({ error: 'Student not found' });
+
+    const requests = loadJSON(REQUESTS_FILE);
+
+    // One request per day
+    const overlap = requests.find(r =>
+        r.student_email === req.user.email &&
+        r.from_date === from_date &&
+        r.final_status !== 'cancelled'
+    );
+    if (overlap) return res.status(400).json({ error: 'You already have a request for this date.' });
+
+    const snapshot = getStudentConfig(student);
+    const requestId = generateRequestId();
+    const parentToken = jwt.sign({ requestId, type: 'parent' }, SECRET);
+
     const request = {
-        id: requestIdCounter++,
-        student_id: user.id,
-        student_name: user.name,
-        student_roll: user.roll,
-        student_branch_section: user.branchSection,
-        request_type: type,
-        reason,
-        leave_date: date,
-        leave_time: time,
-        status: 'PENDING_PARENT',
-        parent_status: 'pending',
-        teacher_status: 'pending',
-        hod_status: 'pending',
+        request_id: requestId,
+        student_email: student.email,
+        student_name: student.name,
+        student_rollno: student.rollno,
+        student_section: student.section,
         submitted_at: new Date().toISOString(),
-        parent_token: jwt.sign({ requestId: requestIdCounter - 1, type: 'parent' }, SECRET)
+        from_date,
+        to_date,
+        reason,
+        snapshot,
+        parent_token: parentToken,
+        parent_status: 'pending',
+        parent_responded_at: null,
+        teacher_status: 'pending',
+        teacher_remarks: null,
+        teacher_actioned_at: null,
+        hod_status: 'pending',
+        hod_remarks: null,
+        hod_actioned_at: null,
+        final_status: 'pending'
     };
-    
-    requests.push(request);
-    
-    // Send email to parent
-    try {
-        const parentEmail = user.parentEmail || process.env.PARENT_EMAIL;
-        console.log('Attempting to send email...');
-        console.log('From:', process.env.EMAIL_USER);
-        console.log('To:', parentEmail);
-        
-        await resend.emails.send({
-            from: `BVRITH <onboarding@resend.dev>`,
-            to: parentEmail,
-            subject: `Leave Request from ${user.name}`,
-            html: `
-                <h2>Student Leave Request</h2>
-                <p><strong>Student:</strong> ${user.name} (${user.roll})</p>
-                <p><strong>Type:</strong> ${type}</p>
-                <p><strong>Date:</strong> ${date}</p>
-                <p><strong>Time:</strong> ${time}</p>
-                <p><strong>Reason:</strong> ${reason}</p>
-                <br>
-                <a href="${BASE_URL}/login.html?token=${request.parent_token}" 
-                   style="background:#27ae60;color:white;padding:12px 24px;text-decoration:none;border-radius:5px;">
-                   Approve/Reject Request
-                </a>
-            `
-        });
-        console.log('✅ Email sent to parent:', parentEmail);
-    } catch (emailError) {
-        console.error('❌ Email failed:', emailError.message);
-    }
 
-    // Send WhatsApp to parent
+    requests.push(request);
+    saveJSON(REQUESTS_FILE, requests);
+
+    // WhatsApp to parent
     try {
-        const parentPhone = user.parentPhone;
-        if (twilioClient && parentPhone) {
+        if (twilioClient && student.parent_phone) {
             await twilioClient.messages.create({
                 from: TWILIO_WHATSAPP_FROM,
-                to: `whatsapp:${parentPhone}`,
-                body: `Leave Request from ${user.name}\nDate: ${date} Time: ${time}\nReason: ${reason}\n\nApprove/Reject: ${BASE_URL}/login.html?token=${request.parent_token}`
+                to: `whatsapp:+${student.parent_phone}`,
+                body: `Leave Request from ${student.name}\nFrom: ${from_date} To: ${to_date}\nReason: ${reason}\n\nApprove/Reject: ${BASE_URL}/login.html?token=${parentToken}`
             });
-            console.log('✅ WhatsApp sent to parent:', parentPhone);
+            logWhatsApp(requestId, student.parent_phone, 'approval_request', 'sent');
+            console.log('✅ WhatsApp sent to parent:', student.parent_phone);
         }
-    } catch (whatsappError) {
-        console.error('❌ WhatsApp failed:', whatsappError.message);
+    } catch (e) {
+        logWhatsApp(requestId, student.parent_phone, 'approval_request', 'failed');
+        console.error('❌ WhatsApp failed:', e.message);
     }
-    
-    res.json({ requestId: request.id, message: 'Request submitted' });
+
+    res.json({ request_id: requestId, message: 'Request submitted' });
 });
 
+// --- Student: get requests ---
 app.get('/api/student/requests', authenticate, (req, res) => {
-    const userRequests = requests.filter(r => r.student_id === req.user.id);
-    res.json(userRequests);
+    const requests = loadJSON(REQUESTS_FILE);
+    res.json(requests.filter(r => r.student_email === req.user.email));
 });
 
+// --- Student: cancel request ---
 app.post('/api/student/cancel/:id', authenticate, (req, res) => {
-    const request = requests.find(r => r.id === parseInt(req.params.id) && r.student_id === req.user.id);
+    const requests = loadJSON(REQUESTS_FILE);
+    const request = requests.find(r => r.request_id === req.params.id && r.student_email === req.user.email);
     if (!request) return res.status(404).json({ error: 'Request not found' });
-    
-    request.status = 'CANCELLED_BY_STUDENT';
+    request.final_status = 'cancelled';
+    saveJSON(REQUESTS_FILE, requests);
     res.json({ message: 'Request cancelled' });
 });
 
-// Teacher endpoints
+// --- Parent: get request ---
+app.get('/api/parent/request/:token', (req, res) => {
+    try {
+        const { requestId } = jwt.verify(req.params.token, SECRET);
+        const request = loadJSON(REQUESTS_FILE).find(r => r.request_id === requestId);
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+        res.json(request);
+    } catch {
+        res.status(401).json({ error: 'Invalid or expired token' });
+    }
+});
+
+// --- Parent: approve ---
+app.post('/api/parent/approve/:token', async (req, res) => {
+    try {
+        const { requestId } = jwt.verify(req.params.token, SECRET);
+        const requests = loadJSON(REQUESTS_FILE);
+        const request = requests.find(r => r.request_id === requestId);
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+
+        request.parent_status = 'approved';
+        request.parent_responded_at = new Date().toISOString();
+        saveJSON(REQUESTS_FILE, requests);
+
+        // Notify teacher via Resend
+        try {
+            if (resend) {
+                const pendingCount = requests.filter(r => r.snapshot.class_teacher === request.snapshot.class_teacher && r.parent_status === 'approved' && r.teacher_status === 'pending').length;
+                await resend.emails.send({
+                    from: 'BVRITH <onboarding@resend.dev>',
+                    to: request.snapshot.class_teacher,
+                    subject: `New Leave Request - ${pendingCount} request(s) pending`,
+                    html: `<p>Leave request from <strong>${request.student_name}</strong> needs your approval.</p><p>You have <strong>${pendingCount}</strong> pending request(s).</p><p><a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
+                });
+                console.log('✅ Teacher email sent:', request.snapshot.class_teacher);
+            }
+        } catch (e) { console.error('Teacher email failed:', e.message); }
+
+        res.json({ message: 'Approved' });
+    } catch {
+        res.status(401).json({ error: 'Invalid or expired token' });
+    }
+});
+
+// --- Parent: reject ---
+app.post('/api/parent/reject/:token', (req, res) => {
+    try {
+        const { requestId } = jwt.verify(req.params.token, SECRET);
+        const requests = loadJSON(REQUESTS_FILE);
+        const request = requests.find(r => r.request_id === requestId);
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+
+        request.parent_status = 'rejected';
+        request.parent_responded_at = new Date().toISOString();
+        request.final_status = 'rejected';
+        saveJSON(REQUESTS_FILE, requests);
+        res.json({ message: 'Rejected' });
+    } catch {
+        res.status(401).json({ error: 'Invalid or expired token' });
+    }
+});
+
+// --- Teacher: get pending requests ---
 app.get('/api/teacher/requests/pending', authenticate, (req, res) => {
-    const user = users.find(u => u.id === req.user.id);
-    const pending = requests.filter(r => 
-        r.status === 'PENDING_TEACHER' && 
-        user.sections && user.sections.includes(r.student_branch_section)
+    const requests = loadJSON(REQUESTS_FILE);
+    const pending = requests.filter(r =>
+        r.snapshot.class_teacher === req.user.email &&
+        r.parent_status === 'approved' &&
+        r.teacher_status === 'pending' &&
+        r.final_status === 'pending'
     );
     res.json(pending);
 });
 
+// --- Teacher: approve ---
 app.post('/api/teacher/approve/:id', authenticate, async (req, res) => {
-    const user = users.find(u => u.id === req.user.id) || req.user;
-    const request = requests.find(r => r.id === parseInt(req.params.id));
+    const requests = loadJSON(REQUESTS_FILE);
+    const request = requests.find(r => r.request_id === req.params.id);
     if (!request) return res.status(404).json({ error: 'Request not found' });
-    
+
     request.teacher_status = 'approved';
-    request.status = 'PENDING_HOD';
-    request.teacher_approved_at = new Date().toISOString();
+    request.teacher_remarks = req.body.remarks || null;
+    request.teacher_actioned_at = new Date().toISOString();
+    saveJSON(REQUESTS_FILE, requests);
 
     // Notify HOD via Brevo
     try {
-        const hodEmail = process.env.HOD_EMAIL || 'watermelon37453@gmail.com';
-        console.log('Sending HOD email to:', hodEmail);
         if (process.env.BREVO_API_KEY) {
-            const pendingCount = requests.filter(r => r.status === 'PENDING_HOD').length;
-            await sendBrevoEmail(hodEmail, `New Leave Request - ${pendingCount} request(s) pending`,
-                `<p>A new leave request from <strong>${request.student_name}</strong> is pending your approval.</p><p>You have <strong>${pendingCount}</strong> request(s) in your queue.</p><p>Login to approve: <a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
+            const pendingCount = requests.filter(r => r.snapshot.hod === request.snapshot.hod && r.teacher_status === 'approved' && r.hod_status === 'pending').length;
+            await sendBrevoEmail(request.snapshot.hod,
+                `New Leave Request - ${pendingCount} request(s) pending`,
+                `<p>Leave request from <strong>${request.student_name}</strong> needs your approval.</p><p>You have <strong>${pendingCount}</strong> pending request(s).</p><p><a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
             );
-            console.log('✅ HOD email sent to:', hodEmail);
-        } else {
-            console.log('Brevo not configured');
+            console.log('✅ HOD email sent:', request.snapshot.hod);
         }
     } catch (e) { console.error('HOD email failed:', e.message); }
 
-    res.json({ message: 'Request approved' });
+    res.json({ message: 'Approved' });
 });
 
+// --- Teacher: reject ---
 app.post('/api/teacher/reject/:id', authenticate, (req, res) => {
-    const request = requests.find(r => r.id === parseInt(req.params.id));
+    const requests = loadJSON(REQUESTS_FILE);
+    const request = requests.find(r => r.request_id === req.params.id);
     if (!request) return res.status(404).json({ error: 'Request not found' });
-    
+
     request.teacher_status = 'rejected';
-    request.status = 'REJECTED_BY_TEACHER';
-    request.teacher_rejection_reason = req.body.reason;
-    res.json({ message: 'Request rejected' });
+    request.teacher_remarks = req.body.reason || null;
+    request.teacher_actioned_at = new Date().toISOString();
+    request.final_status = 'rejected';
+    saveJSON(REQUESTS_FILE, requests);
+    res.json({ message: 'Rejected' });
 });
 
-// HOD endpoints
+// --- HOD: get pending requests ---
 app.get('/api/hod/requests/pending', authenticate, (req, res) => {
-    // HOD sees all pending requests
-    const pending = requests.filter(r => r.status === 'PENDING_HOD');
+    const requests = loadJSON(REQUESTS_FILE);
+    const pending = requests.filter(r =>
+        r.snapshot.hod === req.user.email &&
+        r.teacher_status === 'approved' &&
+        r.hod_status === 'pending' &&
+        r.final_status === 'pending'
+    );
     res.json(pending);
 });
 
+// --- HOD: approve ---
 app.post('/api/hod/approve/:id', authenticate, (req, res) => {
-    const request = requests.find(r => r.id === parseInt(req.params.id));
+    const requests = loadJSON(REQUESTS_FILE);
+    const request = requests.find(r => r.request_id === req.params.id);
     if (!request) return res.status(404).json({ error: 'Request not found' });
-    
+
     request.hod_status = 'approved';
-    request.status = 'APPROVED';
-    request.hod_approved_at = new Date().toISOString();
-    res.json({ message: 'Request approved' });
+    request.hod_remarks = req.body.remarks || null;
+    request.hod_actioned_at = new Date().toISOString();
+    request.final_status = 'approved';
+    saveJSON(REQUESTS_FILE, requests);
+    res.json({ message: 'Approved' });
 });
 
+// --- HOD: reject ---
 app.post('/api/hod/reject/:id', authenticate, (req, res) => {
-    const request = requests.find(r => r.id === parseInt(req.params.id));
+    const requests = loadJSON(REQUESTS_FILE);
+    const request = requests.find(r => r.request_id === req.params.id === req.params.id);
     if (!request) return res.status(404).json({ error: 'Request not found' });
-    
+
     request.hod_status = 'rejected';
-    request.status = 'REJECTED_BY_HOD';
-    request.hod_rejection_reason = req.body.reason;
-    res.json({ message: 'Request rejected' });
-});
-
-// Parent endpoints
-app.get('/api/parent/request/:token', (req, res) => {
-    try {
-        const decoded = jwt.verify(req.params.token, SECRET);
-        const request = requests.find(r => r.id === decoded.requestId);
-        if (!request) return res.status(404).json({ error: 'Request not found' });
-        res.json(request);
-    } catch (error) {
-        res.status(401).json({ error: 'Invalid or expired token' });
-    }
-});
-
-app.post('/api/parent/approve/:token', async (req, res) => {
-    try {
-        const decoded = jwt.verify(req.params.token, SECRET);
-        const request = requests.find(r => r.id === decoded.requestId);
-        if (!request) return res.status(404).json({ error: 'Request not found' });
-        
-        request.parent_status = 'approved';
-        request.status = 'PENDING_TEACHER';
-        request.parent_approved_at = new Date().toISOString();
-
-        // Notify teacher
-        try {
-            const teacherEntry = facultySectionsDB.find(f => f.branchSection === request.student_branch_section);
-            if (teacherEntry && resend) {
-                const pendingCount = requests.filter(r => r.status === 'PENDING_TEACHER' && r.student_branch_section === request.student_branch_section).length;
-                await resend.emails.send({
-                    from: 'BVRITH <onboarding@resend.dev>',
-                    to: teacherEntry.facultyEmail,
-                    subject: `New Leave Request - ${pendingCount} request(s) pending`,
-                    html: `<p>A new leave request from <strong>${request.student_name}</strong> is pending your approval.</p><p>You have <strong>${pendingCount}</strong> request(s) in your queue.</p><p>Login to approve: <a href="${BASE_URL}/login.html">Open Dashboard</a></p>`
-                });
-            }
-        } catch (e) { console.error('Teacher email failed:', e.message); }
-
-        res.json({ message: 'Request approved' });
-    } catch (error) {
-        res.status(401).json({ error: 'Invalid or expired token' });
-    }
-});
-
-app.post('/api/parent/reject/:token', (req, res) => {
-    try {
-        const decoded = jwt.verify(req.params.token, SECRET);
-        const request = requests.find(r => r.id === decoded.requestId);
-        if (!request) return res.status(404).json({ error: 'Request not found' });
-        
-        request.parent_status = 'rejected';
-        request.status = 'REJECTED_BY_PARENT';
-        request.parent_rejection_reason = req.body.reason;
-        res.json({ message: 'Request rejected' });
-    } catch (error) {
-        res.status(401).json({ error: 'Invalid or expired token' });
-    }
+    request.hod_remarks = req.body.reason || null;
+    request.hod_actioned_at = new Date().toISOString();
+    request.final_status = 'rejected';
+    saveJSON(REQUESTS_FILE, requests);
+    res.json({ message: 'Rejected' });
 });
 
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log('\n✅ Email-based authentication enabled');
-    console.log('Authorized domain: @bvrithyderabad.edu.in');
-    console.log('Role detection:');
-    console.log('  - *@hod.bvrithyderabad.edu.in → HOD');
-    console.log('  - *wh*@bvrithyderabad.edu.in (first 10 chars) → Student');
-    console.log('  - *@bvrithyderabad.edu.in → Teacher');
+    console.log('✅ New database structure active');
 });
