@@ -84,7 +84,11 @@ function getRole(email) {
 function getStudentConfig(student) {
     const config = loadJSON(SECTION_CONFIG_FILE);
     const admissionYear = parseInt(student.batch.split('-')[0]);
-    const yearOfStudy = new Date().getFullYear() - admissionYear + 1;
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1; // 1-12
+    // Academic year starts in July, so before July still in same academic year
+    const academicYear = currentMonth >= 7 ? currentYear : currentYear - 1;
+    const yearOfStudy = academicYear - admissionYear + 1;
 
     if (yearOfStudy === 1) {
         const section = config.first_year.batches[student.batch][student.section];
