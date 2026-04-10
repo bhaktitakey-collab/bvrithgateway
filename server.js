@@ -239,7 +239,7 @@ app.post('/api/student/request', authenticate, async (req, res) => {
             await twilioClient.messages.create({
                 from: TWILIO_WHATSAPP_FROM,
                 to: `whatsapp:+${student.parent_phone}`,
-                body: `Leave Request from ${student.name}\nFrom: ${from_date} To: ${to_date}\nReason: ${reason}\n\nApprove/Reject: ${BASE_URL}/login.html?token=${parentToken}`
+                body: `Leave Request from ${student.name}\nDate: ${from_date}\nTime: ${time}\nReason: ${reason}\n\nApprove/Reject: ${BASE_URL}/login.html?token=${parentToken}`
             });
             logWhatsApp(requestId, student.parent_phone, 'approval_request', 'sent');
             console.log('✅ WhatsApp sent to parent:', student.parent_phone);

@@ -72,8 +72,8 @@
                 <h2>Submit Permission Request</h2>
 
                 <div class="form-group"><label>Reason (max 500 chars)</label><textarea id="reason" maxlength="500"></textarea></div>
-                <div class="form-group"><label>From Date</label><input type="date" id="fromDate"></div>
-                <div class="form-group"><label>To Date</label><input type="date" id="toDate"></div>
+                <div class="form-group"><label>Leave Date</label><input type="date" id="leaveDate"></div>
+                <div class="form-group"><label>Leave Time</label><input type="time" id="leaveTime"></div>
                 <button class="btn btn-primary" onclick="submitRequest()">Submit Request</button>
             </div>
 
@@ -175,20 +175,19 @@
             if (btn.disabled) return;
             btn.disabled = true;
             const reason = document.getElementById('reason').value;
-            const from_date = document.getElementById('fromDate').value;
-            const to_date = document.getElementById('toDate').value;
+            const from_date = document.getElementById('leaveDate').value;
+            const time = document.getElementById('leaveTime').value;
 
-            if (!reason || !from_date || !to_date) { btn.disabled = false; return alert('Fill all fields'); }
+            if (!reason || !from_date || !time) { btn.disabled = false; return alert('Fill all fields'); }
 
             const today = new Date().toISOString().split('T')[0];
             if (from_date < today) { btn.disabled = false; return alert('Cannot apply for past dates'); }
-            if (to_date < from_date) { btn.disabled = false; return alert('To date cannot be before From date'); }
 
             try {
-                await apiCall('/student/request', 'POST', { reason, from_date, to_date });
+                await apiCall('/student/request', 'POST', { reason, from_date, to_date: from_date, time });
                 document.getElementById('reason').value = '';
-                document.getElementById('fromDate').value = '';
-                document.getElementById('toDate').value = '';
+                document.getElementById('leaveDate').value = '';
+                document.getElementById('leaveTime').value = '';
                 await loadStudentRequests();
                 alert('Request submitted successfully!\n\nA WhatsApp message has been sent to your parent for approval.');
                 btn.disabled = false;
@@ -340,12 +339,11 @@
             try {
                 const request = await apiCall(`/parent/request/${token}`, 'GET', null, false);
                 document.getElementById('parentRequest').innerHTML = `
-                    <div class="request-item ${request.request_type}">
+                    <div class="request-item">
                         <h3>Request from ${request.student_name}</h3>
-                        <p><strong>Roll:</strong> ${request.student_roll}</p>
-                        <p><strong>Type:</strong> <span style="color: ${request.request_type === 'emergency' ? '#e74c3c' : '#3498db'}">${request.request_type.toUpperCase()}</span></p>
+                        <p><strong>Roll:</strong> ${request.student_rollno}</p>
                         <p><strong>Reason:</strong> ${request.reason}</p>
-                        <p><strong>Leave:</strong> ${request.leave_date} at ${request.leave_time}</p>
+                        <p><strong>Date:</strong> ${request.from_date}</p>
                     </div>
                 `;
                 currentToken = token;
